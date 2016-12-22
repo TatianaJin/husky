@@ -43,13 +43,24 @@ class SGD : public GradientDescentBase<FeatureT, LabelT, is_sparse> {
         : GradientDescentBase<FeatureT, LabelT, is_sparse>(_gradient_func, _learning_rate) {}
 
     template <typename ParamT>
-    void update_vec(ObjL& data, ParamT& param_list, int num_global_samples) {
+    void update_param(ObjL& data, ParamT& param_list, int num_global_samples) {
         ASSERT_MSG(this->learning_rate_ != 0, "Learning rate is set to 0.");
         ASSERT_MSG(this->gradient_func_ != nullptr, "Gradient function is not specified.");
 
         int num_local_samples = data.get_size();        // number of local samples
         auto current_vec = param_list.get_all_param();  // local copy of parameter
         auto& ac = AggregatorFactory::get_channel();
+
+        if (regularization_flag_) {
+            switch(regularization_norm_) {
+                case 1:
+                    // TODO(Tatiana): l1_regularize(param_list);
+                    break;
+                case 2:
+                    l2_regularize(param_list);
+                    break;
+            }
+        }
 
         list_execute(data, {}, {&ac}, [&, this](ObjT& this_obj) {
             auto grad = this->gradient_func_(this_obj, current_vec);  // calculate gradient
@@ -61,6 +72,24 @@ class SGD : public GradientDescentBase<FeatureT, LabelT, is_sparse> {
             }
         });
     }
+
+    void set_regularization(int norm, double lambda) {
+        regularization_flag_ = true;
+        regularization_norm_ = norm;
+        lambda_ = lambda;
+    }
+
+   private:
+    template <typename ParamT>
+    void l2_regularize(ParamT& param_list) {
+        for (int i = 0; i < param_list.get_num_param(); ++i) {
+            param_list.update(i, - param_list.param_at(i) * this->learning_rate_ * lambda_);
+        }
+    }
+
+    bool regularization_flag_ = false;
+    int regularization_norm_;
+    double lambda_;
 };
 
 }  // namespace ml
